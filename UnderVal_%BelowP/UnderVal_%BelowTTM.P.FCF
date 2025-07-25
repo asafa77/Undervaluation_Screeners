@@ -1,3 +1,26 @@
+# 1) How far back to look:
+PERIOD = "13mo"   # e.g. "7mo" for 7 months, "25mo" for 25 months, "2y" for 2 years
+
+# 2) Data frequency:
+INTERVAL = "1mo"    # "1mo" (monthly), "1wk" (weekly), "1d" (daily), etc.
+
+# 3) How many periods to average:
+LOOKBACK_MONTHS = 12      # must be ≤ number of points returned by PERIOD/INTERVAL
+
+# 4) Percent below mean:
+#    THRESHOLD = 0.8 → current P/FCF ≤ 80% of the LOOKBACK average (i.e. ≥20% below)
+#    THRESHOLD = 0.7 → current P/FCF ≤ 70% of the average (i.e. ≥30% below)
+#    THRESHOLD = 0.9 → current P/FCF ≤ 90% of the average (i.e. ≥10% below
+THRESHOLD        = 0.8
+Use these four variables at the top of the script to instantly retarget:
+
+Longer or shorter look‑back windows by changing PERIOD and LOOKBACK_MONTHS.
+
+Higher‑frequency data (weekly, daily) by changing INTERVAL.
+
+Looser or tighter screens by raising/lowering THRESHOLD.
+
+
 # ▶️ Step 0: install dependencies
 !pip install yfinance tqdm --quiet
 
