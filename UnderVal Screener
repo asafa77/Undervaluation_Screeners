@@ -1,0 +1,56 @@
+# 0) install
+!pip install yfinance tqdm --quiet
+
+import yfinance as yf
+import pandas as pd
+from tqdm import tqdm
+
+# 1) pull the S&P 500 tickers
+sp500 = pd.read_html(
+    "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+    header=0
+)[0]
+symbols = [s.replace('.', '-') for s in sp500.Symbol]
+
+results = []
+
+# 2) loop
+for sym in tqdm(symbols, desc="Scanning S&P 500"):
+    try:
+        t = yf.Ticker(sym)
+        info = t.info
+        
+        eps = info.get("trailingEps", None)
+        if not eps or eps <= 0:
+            continue
+        
+        # 3) price history: last 12 months (month‑end)
+        pr = (t.history(period="13mo", interval="1mo")['Close']
+                .dropna())
+        if len(pr) < 12:
+            continue
+        
+        avg_price   = pr.iloc[-12:].mean()
+        current_price = pr.iloc[-1]
+        
+        # 4) P/E calc
+        avg_pe  = avg_price   / eps
+        curr_pe = current_price / eps
+        
+        # 5) screen ≥40% below
+        if curr_pe <= 0.6 * avg_pe:
+            results.append({
+                "Ticker":        sym,
+                "Current P/E":   round(curr_pe,2),
+                "Avg 12mo P/E":  round(avg_pe,2),
+                "% Below Avg":   round((avg_pe - curr_pe)/avg_pe*100,2)
+            })
+    except Exception:
+        continue
+
+# 6) show
+df = pd.DataFrame(results)
+if not df.empty:
+    display(df.sort_values("% Below Avg", ascending=False).reset_index(drop=True))
+else:
+    print("No S&P 500 stocks ≥40% below their 12 mo mean P/E by this simple screen.")
