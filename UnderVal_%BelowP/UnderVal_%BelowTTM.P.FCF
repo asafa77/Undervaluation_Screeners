@@ -1,0 +1,66 @@
+# ▶️ Step 0: install dependencies
+!pip install yfinance tqdm --quiet
+
+# ▶️ Step 1: imports
+import yfinance as yf
+import pandas as pd
+from tqdm import tqdm
+
+# Optional: display all rows in Colab
+pd.set_option('display.max_rows', None)
+
+# ▶️ Step 2: configuration
+# THRESHOLD = 0.8 → current P/FCF ≤ 80% of its 12‑month average (i.e. ≥20% below)
+THRESHOLD = 0.8
+
+# ▶️ Step 3: fetch S&P 500 tickers
+sp500 = pd.read_html(
+    "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies",
+    header=0
+)[0]
+symbols = [s.replace('.', '-') for s in sp500.Symbol.tolist()]
+
+# ▶️ Step 4: screen loop
+results = []
+for sym in tqdm(symbols, desc="Scanning S&P 500"):
+    try:
+        t = yf.Ticker(sym)
+        info = t.info
+
+        # get trailing free cash flow and shares outstanding
+        fcf = info.get("freeCashflow", None)
+        shares = info.get("sharesOutstanding", None)
+        if not fcf or fcf <= 0 or not shares or shares <= 0:
+            continue
+
+        # fetch last 13 month‑end closes
+        pr = t.history(period="13mo", interval="1mo")['Close'].dropna()
+        if len(pr) < 12:
+            continue
+
+        # compute monthly P/FCF series = (price × shares) / FCF
+        monthly_mktcap = pr * shares
+        pfcf_series = monthly_mktcap / fcf
+
+        # current vs. 12‑month average
+        avg_pfcf  = pfcf_series.iloc[-12:].mean()
+        curr_pfcf = pfcf_series.iloc[-1]
+
+        # keep if current P/FCF is ≥20% below the 12‑mo mean
+        if curr_pfcf <= THRESHOLD * avg_pfcf:
+            results.append({
+                "Ticker":         sym,
+                "Current P/FCF":  round(curr_pfcf,  2),
+                "Avg 12mo P/FCF": round(avg_pfcf,    2),
+                "% Below Avg":    round((avg_pfcf-curr_pfcf)/avg_pfcf*100, 2)
+            })
+    except Exception:
+        continue
+
+# ▶️ Step 5: display results
+df = pd.DataFrame(results)
+if not df.empty:
+    df = df.sort_values("% Below Avg", ascending=False).reset_index(drop=True)
+    display(df)
+else:
+    print("No S&P 500 stocks found trading ≥20% below their 12‑month mean P/FCF.")
