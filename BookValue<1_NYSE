@@ -1,0 +1,60 @@
+import pandas as pd
+import yfinance as yf
+import urllib.request
+import io
+from tqdm import tqdm
+
+def fetch_nyse_tickers():
+    # Download the “otherlisted.txt” file (includes NYSE, AMEX, etc.)
+    url = 'ftp://ftp.nasdaqtrader.com/SymbolDirectory/otherlisted.txt'
+    with urllib.request.urlopen(url) as resp:
+        raw = resp.read().decode('utf-8')
+    df = pd.read_csv(io.StringIO(raw), sep='|')
+    # Keep only NYSE listings (Listing Exchange == 'N')
+    df = df[df['Listing Exchange'] == 'N']
+    return df['Symbol'].tolist()
+
+def get_book_and_price(ticker):
+    """Return (book_value_per_share, last_close_price) or (None, None) on error."""
+    try:
+        tk = yf.Ticker(ticker)
+        # 1) latest quarterly balance sheet
+        bs = tk.quarterly_balance_sheet
+        # book value = (Total Assets – Total Liab) / sharesOutstanding
+        assets = bs.loc['Total Assets'].iloc[0]
+        liab   = bs.loc['Total Liab'].iloc[0]
+        info   = tk.info
+        shares = info.get('sharesOutstanding', None)
+        if shares is None or shares == 0:
+            return None, None
+        book_val_ps = (assets - liab) / shares
+
+        # 2) most recent closing price
+        hist = tk.history(period='1d')
+        last_price = hist['Close'].iloc[-1]
+
+        return book_val_ps, last_price
+    except Exception:
+        return None, None
+
+def screen_below_book():
+    tickers = fetch_nyse_tickers()
+    results = []
+    for sym in tqdm(tickers, desc='Scanning NYSE tickers'):
+        book_ps, price = get_book_and_price(sym)
+        if book_ps and price and price < book_ps:
+            results.append({
+                'Ticker': sym,
+                'Price': price,
+                'Book Value PS': book_ps,
+                'P/B Ratio': price / book_ps
+            })
+
+    df = pd.DataFrame(results)
+    # sort most deeply below book first
+    df = df.sort_values('P/B Ratio')
+    df.to_csv('below_book.csv', index=False)
+    print(f'Found {len(df)} NYSE names trading below book. See “below_book.csv”.')
+
+if __name__ == '__main__':
+    screen_below_book()
